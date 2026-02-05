@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import * as Encoding from 'encoding-japanese';
+import DOMPurify from 'dompurify';
 
 interface Post {
   name: string;
@@ -290,7 +291,7 @@ export default function Home() {
                       </div>
                       <div 
                         className="mt-2 text-gray-800 break-words"
-                        dangerouslySetInnerHTML={{ __html: post.message }}
+                        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(post.message) }}
                       />
                     </div>
                   </div>

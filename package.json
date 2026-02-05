@@ -9,6 +9,8 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@types/dompurify": "^3.0.5",
+    "dompurify": "^3.3.1",
     "encoding-japanese": "^2.2.0",
     "next": "16.1.6",
     "react": "^19.2.4",
