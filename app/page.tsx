@@ -18,6 +18,8 @@ export default function Home() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [error, setError] = useState('');
   const [isDatOchi, setIsDatOchi] = useState(false);
+  const [htmlUrl, setHtmlUrl] = useState('');
+  const [isConverting, setIsConverting] = useState(false);
 
   // Convert 5ch thread URL to dat URL
   const convertToDatUrl = (url: string, isDatOchi: boolean): string | null => {
@@ -137,6 +139,254 @@ export default function Home() {
     return parsedPosts;
   };
 
+  // HTML to DAT conversion functions (ported from Python script)
+  const stripTagsKeepBrA = (bodyHtml: string): string => {
+    // Remove wbr tags
+    bodyHtml = bodyHtml.replace(/<\/?wbr\s*\/?>/gi, '');
+    // Normalize br tags
+    bodyHtml = bodyHtml.replace(/<br\s*\/?>/gi, '<br>');
+
+    // Extract and preserve anchor tags
+    const anchors: string[] = [];
+    // Use [\s\S] instead of 's' flag for cross-line matching
+    bodyHtml = bodyHtml.replace(/<a\b([^>]*?)>([\s\S]*?)<\/a>/gi, (match, attrs, inner) => {
+      const hrefMatch = attrs.match(/\bhref="([^"]+)"/i);
+      const href = hrefMatch ? hrefMatch[1] : '';
+      const tag = href ? `<a href="${href}">${inner}</a>` : inner;
+      anchors.push(tag);
+      return `\x00A${anchors.length - 1}\x00`;
+    });
+
+    // Replace br with placeholder
+    bodyHtml = bodyHtml.replace(/<br>/g, '\x00BR\x00');
+    
+    // Remove all other HTML tags
+    bodyHtml = bodyHtml.replace(/<[^>]+>/g, '');
+    
+    // Remove carriage returns
+    bodyHtml = bodyHtml.replace(/\r/g, '');
+    
+    // Restore br tags
+    bodyHtml = bodyHtml.replace(/\x00BR\x00/g, '<br>');
+    
+    // Restore anchor tags
+    bodyHtml = bodyHtml.replace(/\x00A(\d+)\x00/g, (match, index) => {
+      return anchors[parseInt(index)];
+    });
+    
+    // Clean up whitespace
+    bodyHtml = bodyHtml.replace(/[ \t\f\v]+/g, ' ');
+    bodyHtml = bodyHtml.replace(/ ?<br> ?/g, '<br>');
+    
+    return bodyHtml.trim();
+  };
+
+  const extractNameAndMail = (postHtml: string): { name: string; mail: string } => {
+    let mail = '';
+    const mailMatch = postHtml.match(/href="mailto:([^"]*)"/i);
+    if (mailMatch) {
+      mail = unescapeHtml(mailMatch[1]).trim();
+    }
+
+    let name = '';
+    // Use [\s\S] instead of 's' flag for cross-line matching
+    const usernameMatch = postHtml.match(/<span\s+class="postusername">([\s\S]*?)<\/span>/i);
+    if (usernameMatch) {
+      const block = usernameMatch[1];
+      const anchorMatch = block.match(/>([^<]+)<\/a>/i);
+      if (anchorMatch) {
+        name = anchorMatch[1];
+      } else {
+        name = block.replace(/<[^>]+>/g, '');
+      }
+    }
+    name = unescapeHtml(name).trim();
+    
+    return { name, mail };
+  };
+
+  const unescapeHtml = (text: string): string => {
+    const textarea = document.createElement('textarea');
+    textarea.innerHTML = text;
+    return textarea.value;
+  };
+
+  const parseHtmlPosts = (htmlText: string): Post[] => {
+    const posts: Post[] = [];
+    const divPostRegex = /<div\s+id="(\d+)"[^>]*\bclass="[^"]*\bpost\b[^"]*"[^>]*>/gi;
+    const matches = Array.from(htmlText.matchAll(divPostRegex));
+    
+    for (let i = 0; i < matches.length; i++) {
+      const match = matches[i];
+      const start = match.index!;
+      const end = i + 1 < matches.length ? matches[i + 1].index! : htmlText.length;
+      const block = htmlText.substring(start, end);
+
+      const { name, mail } = extractNameAndMail(block);
+      
+      const dateMatch = block.match(/<span\s+class="date">\s*([^<]+?)\s*<\/span>/i);
+      const date = dateMatch ? unescapeHtml(dateMatch[1]).trim() : '';
+      
+      const uidMatch = block.match(/<span\s+class="uid">\s*ID:([^<]+?)\s*<\/span>/i);
+      const id = uidMatch ? unescapeHtml(uidMatch[1]).trim() : '';
+      
+      // Use [\s\S] instead of 's' flag for cross-line matching
+      const contentMatch = block.match(/<section\s+class="post-content">([\s\S]*?)<\/section>/i);
+      const bodyHtml = contentMatch ? contentMatch[1] : '';
+      const message = stripTagsKeepBrA(bodyHtml);
+
+      posts.push({
+        name: name || '',
+        mail,
+        date,
+        id,
+        message,
+      });
+    }
+    
+    return posts;
+  };
+
+  const extractThreadKey = (htmlText: string): string => {
+    const canonicalMatch = htmlText.match(/<link\s+rel="canonical"\s+href="([^"]+)"/i);
+    if (canonicalMatch) {
+      const canonical = canonicalMatch[1];
+      const keyMatch = canonical.match(/\/read\.cgi\/[^\/]+\/(\d+)\//);
+      if (keyMatch) {
+        return keyMatch[1];
+      }
+    }
+    return '';
+  };
+
+  const convertHtmlToDat = (htmlText: string): { datContent: string; threadKey: string } => {
+    const posts = parseHtmlPosts(htmlText);
+    const threadKey = extractThreadKey(htmlText);
+    
+    const datLines = posts.map(p => {
+      return `${p.name}<>${p.mail}<>${p.date}${p.id ? ' ID:' + p.id : ''}<>${p.message}<>`;
+    });
+    
+    const datContent = datLines.join('\n') + (datLines.length > 0 ? '\n' : '');
+    
+    return { datContent, threadKey };
+  };
+
+  // Handle HTML URL conversion
+  const handleHtmlConvert = async () => {
+    if (!htmlUrl) {
+      setError('URLを入力してください。');
+      return;
+    }
+
+    setError('');
+    setIsConverting(true);
+    
+    try {
+      // Try to fetch the HTML directly first
+      let htmlText: string;
+      
+      try {
+        const response = await fetch(htmlUrl);
+        if (!response.ok) {
+          throw new Error('Failed to fetch');
+        }
+        
+        // Read as bytes and decode as Shift_JIS
+        const arrayBuffer = await response.arrayBuffer();
+        const uint8Array = new Uint8Array(arrayBuffer);
+        
+        // Try to decode as Shift_JIS (cp932)
+        const detectedEncoding = Encoding.detect(uint8Array);
+        let text: string;
+        
+        if (detectedEncoding === 'SJIS' || detectedEncoding === 'EUCJP') {
+          const unicodeArray = Encoding.convert(uint8Array, {
+            to: 'UNICODE',
+            from: detectedEncoding
+          });
+          text = Encoding.codeToString(unicodeArray);
+        } else {
+          // Assume Shift_JIS for kako sites
+          const unicodeArray = Encoding.convert(uint8Array, {
+            to: 'UNICODE',
+            from: 'SJIS'
+          });
+          text = Encoding.codeToString(unicodeArray);
+        }
+        
+        htmlText = text;
+      } catch (fetchError) {
+        // If direct fetch fails (likely CORS), try using a CORS proxy
+        setError('直接アクセスできませんでした。CORSプロキシを試しています...');
+        
+        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(htmlUrl)}`;
+        const response = await fetch(proxyUrl);
+        
+        if (!response.ok) {
+          throw new Error('プロキシ経由でもHTMLの取得に失敗しました。');
+        }
+        
+        const arrayBuffer = await response.arrayBuffer();
+        const uint8Array = new Uint8Array(arrayBuffer);
+        
+        const detectedEncoding = Encoding.detect(uint8Array);
+        let text: string;
+        
+        if (detectedEncoding === 'SJIS' || detectedEncoding === 'EUCJP') {
+          const unicodeArray = Encoding.convert(uint8Array, {
+            to: 'UNICODE',
+            from: detectedEncoding
+          });
+          text = Encoding.codeToString(unicodeArray);
+        } else {
+          const unicodeArray = Encoding.convert(uint8Array, {
+            to: 'UNICODE',
+            from: 'SJIS'
+          });
+          text = Encoding.codeToString(unicodeArray);
+        }
+        
+        htmlText = text;
+      }
+      
+      // Convert HTML to DAT
+      const { datContent, threadKey } = convertHtmlToDat(htmlText);
+      
+      if (!datContent) {
+        setError('HTMLの解析に失敗しました。過去ログサイトのHTMLか確認してください。');
+        setIsConverting(false);
+        return;
+      }
+      
+      // Convert DAT content to Shift_JIS and download
+      const datBytes = Encoding.convert(Encoding.stringToCode(datContent), {
+        to: 'SJIS',
+        from: 'UNICODE'
+      });
+      
+      const blob = new Blob([new Uint8Array(datBytes)], { type: 'text/plain' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${threadKey || 'thread'}.dat`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      
+      setError('');
+      setIsConverting(false);
+      
+      // Also parse and display the posts
+      const parsedPosts = parseHtmlPosts(htmlText);
+      setPosts(parsedPosts);
+    } catch (e) {
+      setError(`エラーが発生しました: ${e instanceof Error ? e.message : '不明なエラー'}`);
+      setIsConverting(false);
+    }
+  };
+
   // Handle file upload
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     setError('');
@@ -243,6 +493,41 @@ export default function Home() {
                   </button>
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* HTML to DAT converter */}
+          <div className="mb-8 border-t pt-8">
+            <h2 className="text-xl font-semibold text-gray-700 mb-4">
+              過去ログサイトのHTMLをdatファイルに変換
+            </h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  過去ログサイトのURL
+                </label>
+                <input
+                  type="text"
+                  value={htmlUrl}
+                  onChange={(e) => setHtmlUrl(e.target.value)}
+                  placeholder="https://kako.5ch.net/..."
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <button
+                onClick={handleHtmlConvert}
+                disabled={isConverting}
+                className={`w-full ${
+                  isConverting
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'bg-purple-500 hover:bg-purple-600'
+                } text-white py-2 px-4 rounded-lg transition-colors`}
+              >
+                {isConverting ? '変換中...' : 'HTMLを取得してdatファイルに変換・ダウンロード'}
+              </button>
+              <p className="text-xs text-gray-500">
+                ※ 5chの過去ログサイトのHTMLを自動的に取得・解析してdatファイルに変換します
+              </p>
             </div>
           </div>
 
