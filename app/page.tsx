@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import * as Encoding from 'encoding-japanese';
-import DOMPurify from 'dompurify';
+import DOMPurify from 'isomorphic-dompurify';
 
 interface Post {
   name: string;
