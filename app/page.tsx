@@ -20,6 +20,7 @@ export default function Home() {
   const [isDatOchi, setIsDatOchi] = useState(false);
   const [hoveredPostNumber, setHoveredPostNumber] = useState<number | null>(null);
   const [popupPosition, setPopupPosition] = useState<{ x: number; y: number } | null>(null);
+  const [highlightedPost, setHighlightedPost] = useState<number | null>(null);
 
   // Convert 5ch thread URL to dat URL
   const convertToDatUrl = (url: string, isDatOchi: boolean): string | null => {
@@ -144,7 +145,7 @@ export default function Home() {
   const processAnchorLinks = (message: string): string => {
     // Match &gt;&gt;digits pattern (HTML-encoded >>)
     return message.replace(/&gt;&gt;(\d+)/g, (match, postNumber) => {
-      return `<a href="#post-${postNumber}" class="anchor-link" data-post-number="${postNumber}" style="color: #0000ff; text-decoration: underline; cursor: pointer;">&gt;&gt;${postNumber}</a>`;
+      return `<a href="#post-${postNumber}" class="anchor-link" data-post-number="${postNumber}">&gt;&gt;${postNumber}</a>`;
     });
   };
 
@@ -153,17 +154,18 @@ export default function Home() {
     const element = document.getElementById(`post-${postNumber}`);
     if (element) {
       element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      // Highlight the post briefly
-      element.style.backgroundColor = '#fffacd';
+      // Highlight the post briefly using state
+      setHighlightedPost(postNumber);
       setTimeout(() => {
-        element.style.backgroundColor = '';
+        setHighlightedPost(null);
       }, 2000);
     }
   };
 
   // Handle anchor link hover
-  const handleAnchorHover = (e: React.MouseEvent, postNumber: number) => {
-    const rect = (e.target as HTMLElement).getBoundingClientRect();
+  const handleAnchorHover = (e: MouseEvent, postNumber: number) => {
+    const target = e.target as HTMLElement;
+    const rect = target.getBoundingClientRect();
     setPopupPosition({ x: rect.left, y: rect.bottom + window.scrollY });
     setHoveredPostNumber(postNumber);
   };
@@ -239,8 +241,8 @@ export default function Home() {
       const target = e.target as HTMLElement;
       if (target.classList.contains('anchor-link')) {
         const postNumber = parseInt(target.getAttribute('data-post-number') || '0');
-        if (postNumber > 0) {
-          handleAnchorHover(e as any, postNumber);
+        if (postNumber > 0 && postNumber <= posts.length) {
+          handleAnchorHover(e, postNumber);
         }
       }
     };
@@ -261,10 +263,23 @@ export default function Home() {
       document.removeEventListener('mouseover', handleMouseOver);
       document.removeEventListener('mouseout', handleMouseOut);
     };
-  }, [posts]);
+  }, [posts.length]); // Only depend on posts.length, not the entire posts array
 
   return (
     <div className="min-h-screen bg-gray-100 py-8">
+      <style jsx>{`
+        .anchor-link {
+          color: #0000ff;
+          text-decoration: underline;
+          cursor: pointer;
+        }
+        .anchor-link:hover {
+          color: #0000cc;
+        }
+        .post-highlighted {
+          background-color: #fffacd !important;
+        }
+      `}</style>
       <div className="max-w-4xl mx-auto px-4">
         <div className="bg-white rounded-lg shadow-lg p-8 mb-8">
           <h1 className="text-3xl font-bold text-center text-gray-800 mb-8">
@@ -362,7 +377,9 @@ export default function Home() {
                 <div 
                   key={index} 
                   id={`post-${index + 1}`}
-                  className="border-b border-gray-200 pb-4 last:border-b-0 transition-colors duration-300"
+                  className={`border-b border-gray-200 pb-4 last:border-b-0 transition-colors duration-300 ${
+                    highlightedPost === index + 1 ? 'post-highlighted' : ''
+                  }`}
                 >
                   <div className="flex items-start space-x-2 mb-2">
                     <span className="text-sm font-semibold text-gray-700">{index + 1}.</span>
