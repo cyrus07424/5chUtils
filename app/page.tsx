@@ -96,7 +96,9 @@ export default function Home() {
       if (e instanceof Error && e.name === 'AbortError') {
         setError('ダウンロードがタイムアウトしました。');
       } else {
-        setError('ダウンロードに失敗しました。ネットワークエラーまたはCORSの問題の可能性があります。');
+        // CORS error detected - open URL in new tab as fallback
+        setError('CORSエラーのため、ブラウザでダウンロードできません。新しいタブでdatファイルを開きます。');
+        window.open(datUrl, '_blank', 'noopener,noreferrer');
       }
     }
   };
