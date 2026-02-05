@@ -286,7 +286,10 @@ export default function Home() {
                     <span className="text-sm font-semibold text-gray-700">{index + 1}.</span>
                     <div className="flex-1">
                       <div className="flex items-center space-x-2 text-sm">
-                        <span className="font-medium text-green-600">{post.name}</span>
+                        <span 
+                          className="font-medium text-green-600"
+                          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(post.name) }}
+                        />
                         {post.mail && <span className="text-gray-500">[{post.mail}]</span>}
                         <span className="text-gray-500">{post.date}</span>
                         {post.id && <span className="text-blue-600">ID:{post.id}</span>}
