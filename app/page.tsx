@@ -114,7 +114,7 @@ export default function Home() {
         const name = parts[0];
         const mail = parts[1];
         const dateAndId = parts[2];
-        const message = parts[3].replace(/<br>/g, '\n');
+        const message = parts[3]; // Keep HTML tags as-is for rendering
 
         // Extract date and ID
         const idMatch = dateAndId.match(/ID:([^\s]+)/);
@@ -288,9 +288,10 @@ export default function Home() {
                         <span className="text-gray-500">{post.date}</span>
                         {post.id && <span className="text-blue-600">ID:{post.id}</span>}
                       </div>
-                      <div className="mt-2 text-gray-800 whitespace-pre-wrap break-words">
-                        {post.message}
-                      </div>
+                      <div 
+                        className="mt-2 text-gray-800 break-words"
+                        dangerouslySetInnerHTML={{ __html: post.message }}
+                      />
                     </div>
                   </div>
                 </div>
