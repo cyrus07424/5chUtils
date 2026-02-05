@@ -98,7 +98,7 @@ export default function Home() {
       } else {
         // CORS error detected - open URL in new tab as fallback
         setError('CORSエラーのため、ブラウザでダウンロードできません。新しいタブでdatファイルを開きます。');
-        window.open(datUrl, '_blank');
+        window.open(datUrl, '_blank', 'noopener,noreferrer');
       }
     }
   };
