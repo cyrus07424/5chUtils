@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import * as Encoding from 'encoding-japanese';
 
 interface Post {
   name: string;
@@ -120,7 +121,32 @@ export default function Home() {
     if (!file) return;
 
     try {
-      const text = await file.text();
+      // Read file as ArrayBuffer to handle encoding properly
+      const arrayBuffer = await file.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      
+      // Detect encoding - prioritize SHIFT_JIS for dat files
+      const detectedEncoding = Encoding.detect(uint8Array);
+      
+      // Convert to UTF-8 string
+      // If detected as SJIS (SHIFT_JIS), use SJIS conversion
+      // Otherwise, treat as UTF-8
+      let text: string;
+      if (detectedEncoding === 'SJIS') {
+        const unicodeArray = Encoding.convert(uint8Array, {
+          to: 'UNICODE',
+          from: 'SJIS'
+        });
+        text = Encoding.codeToString(unicodeArray);
+      } else {
+        // Fall back to UTF-8
+        const unicodeArray = Encoding.convert(uint8Array, {
+          to: 'UNICODE',
+          from: 'UTF8'
+        });
+        text = Encoding.codeToString(unicodeArray);
+      }
+      
       const parsedPosts = parseDatFile(text);
       
       if (parsedPosts.length === 0) {
