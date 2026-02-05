@@ -160,8 +160,13 @@ export default function Home() {
     // Replace br with placeholder
     bodyHtml = bodyHtml.replace(/<br>/g, '\x00BR\x00');
     
-    // Remove all other HTML tags
-    bodyHtml = bodyHtml.replace(/<[^>]+>/g, '');
+    // Remove all other HTML tags - use more comprehensive pattern
+    // Keep removing tags until no more tags are found to handle nested/malformed tags
+    let prevHtml = '';
+    while (prevHtml !== bodyHtml) {
+      prevHtml = bodyHtml;
+      bodyHtml = bodyHtml.replace(/<[^>]*>/g, '');
+    }
     
     // Remove carriage returns
     bodyHtml = bodyHtml.replace(/\r/g, '');
@@ -197,7 +202,14 @@ export default function Home() {
       if (anchorMatch) {
         name = anchorMatch[1];
       } else {
-        name = block.replace(/<[^>]+>/g, '');
+        // Remove all HTML tags - use loop to handle nested/malformed tags
+        let temp = block;
+        let prevTemp = '';
+        while (prevTemp !== temp) {
+          prevTemp = temp;
+          temp = temp.replace(/<[^>]*>/g, '');
+        }
+        name = temp;
       }
     }
     name = unescapeHtml(name).trim();
@@ -272,6 +284,29 @@ export default function Home() {
     return { datContent, threadKey };
   };
 
+  // Helper function to decode text with encoding detection
+  const decodeTextWithEncoding = (uint8Array: Uint8Array): string => {
+    const detectedEncoding = Encoding.detect(uint8Array);
+    let text: string;
+    
+    if (detectedEncoding === 'SJIS' || detectedEncoding === 'EUCJP') {
+      const unicodeArray = Encoding.convert(uint8Array, {
+        to: 'UNICODE',
+        from: detectedEncoding
+      });
+      text = Encoding.codeToString(unicodeArray);
+    } else {
+      // Assume Shift_JIS for kako sites
+      const unicodeArray = Encoding.convert(uint8Array, {
+        to: 'UNICODE',
+        from: 'SJIS'
+      });
+      text = Encoding.codeToString(unicodeArray);
+    }
+    
+    return text;
+  };
+
   // Handle HTML URL conversion
   const handleHtmlConvert = async () => {
     if (!htmlUrl) {
@@ -289,33 +324,13 @@ export default function Home() {
       try {
         const response = await fetch(htmlUrl);
         if (!response.ok) {
-          throw new Error('Failed to fetch');
+          throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`);
         }
         
         // Read as bytes and decode as Shift_JIS
         const arrayBuffer = await response.arrayBuffer();
         const uint8Array = new Uint8Array(arrayBuffer);
-        
-        // Try to decode as Shift_JIS (cp932)
-        const detectedEncoding = Encoding.detect(uint8Array);
-        let text: string;
-        
-        if (detectedEncoding === 'SJIS' || detectedEncoding === 'EUCJP') {
-          const unicodeArray = Encoding.convert(uint8Array, {
-            to: 'UNICODE',
-            from: detectedEncoding
-          });
-          text = Encoding.codeToString(unicodeArray);
-        } else {
-          // Assume Shift_JIS for kako sites
-          const unicodeArray = Encoding.convert(uint8Array, {
-            to: 'UNICODE',
-            from: 'SJIS'
-          });
-          text = Encoding.codeToString(unicodeArray);
-        }
-        
-        htmlText = text;
+        htmlText = decodeTextWithEncoding(uint8Array);
       } catch (fetchError) {
         // If direct fetch fails (likely CORS), try using a CORS proxy
         setError('直接アクセスできませんでした。CORSプロキシを試しています...');
@@ -324,37 +339,19 @@ export default function Home() {
         const response = await fetch(proxyUrl);
         
         if (!response.ok) {
-          throw new Error('プロキシ経由でもHTMLの取得に失敗しました。');
+          throw new Error(`プロキシ経由でもHTMLの取得に失敗しました: ${response.status} ${response.statusText}`);
         }
         
         const arrayBuffer = await response.arrayBuffer();
         const uint8Array = new Uint8Array(arrayBuffer);
-        
-        const detectedEncoding = Encoding.detect(uint8Array);
-        let text: string;
-        
-        if (detectedEncoding === 'SJIS' || detectedEncoding === 'EUCJP') {
-          const unicodeArray = Encoding.convert(uint8Array, {
-            to: 'UNICODE',
-            from: detectedEncoding
-          });
-          text = Encoding.codeToString(unicodeArray);
-        } else {
-          const unicodeArray = Encoding.convert(uint8Array, {
-            to: 'UNICODE',
-            from: 'SJIS'
-          });
-          text = Encoding.codeToString(unicodeArray);
-        }
-        
-        htmlText = text;
+        htmlText = decodeTextWithEncoding(uint8Array);
       }
       
       // Convert HTML to DAT
       const { datContent, threadKey } = convertHtmlToDat(htmlText);
       
-      if (!datContent) {
-        setError('HTMLの解析に失敗しました。過去ログサイトのHTMLか確認してください。');
+      if (!datContent || datContent.trim() === '') {
+        setError('HTMLの解析に失敗しました。投稿が見つかりませんでした。過去ログサイトのHTMLか確認してください。');
         setIsConverting(false);
         return;
       }
