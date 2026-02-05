@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import * as Encoding from 'encoding-japanese';
 import DOMPurify from 'isomorphic-dompurify';
 
@@ -18,6 +18,8 @@ export default function Home() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [error, setError] = useState('');
   const [isDatOchi, setIsDatOchi] = useState(false);
+  const [hoveredPostNumber, setHoveredPostNumber] = useState<number | null>(null);
+  const [popupPosition, setPopupPosition] = useState<{ x: number; y: number } | null>(null);
 
   // Convert 5ch thread URL to dat URL
   const convertToDatUrl = (url: string, isDatOchi: boolean): string | null => {
@@ -137,6 +139,41 @@ export default function Home() {
     return parsedPosts;
   };
 
+  // Process message to convert anchor links (>>1 style) to clickable links
+  // This should be called AFTER DOMPurify.sanitize, which converts >> to &gt;&gt;
+  const processAnchorLinks = (message: string): string => {
+    // Match &gt;&gt;digits pattern (HTML-encoded >>)
+    return message.replace(/&gt;&gt;(\d+)/g, (match, postNumber) => {
+      return `<a href="#post-${postNumber}" class="anchor-link" data-post-number="${postNumber}" style="color: #0000ff; text-decoration: underline; cursor: pointer;">&gt;&gt;${postNumber}</a>`;
+    });
+  };
+
+  // Scroll to target post
+  const scrollToPost = (postNumber: number) => {
+    const element = document.getElementById(`post-${postNumber}`);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Highlight the post briefly
+      element.style.backgroundColor = '#fffacd';
+      setTimeout(() => {
+        element.style.backgroundColor = '';
+      }, 2000);
+    }
+  };
+
+  // Handle anchor link hover
+  const handleAnchorHover = (e: React.MouseEvent, postNumber: number) => {
+    const rect = (e.target as HTMLElement).getBoundingClientRect();
+    setPopupPosition({ x: rect.left, y: rect.bottom + window.scrollY });
+    setHoveredPostNumber(postNumber);
+  };
+
+  // Handle anchor link mouse leave
+  const handleAnchorLeave = () => {
+    setHoveredPostNumber(null);
+    setPopupPosition(null);
+  };
+
   // Handle file upload
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     setError('');
@@ -184,6 +221,47 @@ export default function Home() {
       setError('ファイルの読み込みに失敗しました。');
     }
   };
+
+  // Add event listeners for anchor links
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.classList.contains('anchor-link')) {
+        e.preventDefault();
+        const postNumber = parseInt(target.getAttribute('data-post-number') || '0');
+        if (postNumber > 0) {
+          scrollToPost(postNumber);
+        }
+      }
+    };
+
+    const handleMouseOver = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.classList.contains('anchor-link')) {
+        const postNumber = parseInt(target.getAttribute('data-post-number') || '0');
+        if (postNumber > 0) {
+          handleAnchorHover(e as any, postNumber);
+        }
+      }
+    };
+
+    const handleMouseOut = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.classList.contains('anchor-link')) {
+        handleAnchorLeave();
+      }
+    };
+
+    document.addEventListener('click', handleClick);
+    document.addEventListener('mouseover', handleMouseOver);
+    document.addEventListener('mouseout', handleMouseOut);
+
+    return () => {
+      document.removeEventListener('click', handleClick);
+      document.removeEventListener('mouseover', handleMouseOver);
+      document.removeEventListener('mouseout', handleMouseOut);
+    };
+  }, [posts]);
 
   return (
     <div className="min-h-screen bg-gray-100 py-8">
@@ -281,7 +359,11 @@ export default function Home() {
             </h2>
             <div className="space-y-4">
               {posts.map((post, index) => (
-                <div key={index} className="border-b border-gray-200 pb-4 last:border-b-0">
+                <div 
+                  key={index} 
+                  id={`post-${index + 1}`}
+                  className="border-b border-gray-200 pb-4 last:border-b-0 transition-colors duration-300"
+                >
                   <div className="flex items-start space-x-2 mb-2">
                     <span className="text-sm font-semibold text-gray-700">{index + 1}.</span>
                     <div className="flex-1">
@@ -296,12 +378,48 @@ export default function Home() {
                       </div>
                       <div 
                         className="mt-2 text-gray-800 break-words"
-                        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(post.message) }}
+                        dangerouslySetInnerHTML={{ __html: processAnchorLinks(DOMPurify.sanitize(post.message)) }}
                       />
                     </div>
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Popup for hovered post */}
+        {hoveredPostNumber !== null && popupPosition && posts[hoveredPostNumber - 1] && (
+          <div 
+            className="fixed bg-white border-2 border-blue-500 rounded-lg shadow-xl p-4 max-w-md z-50"
+            style={{ 
+              left: `${popupPosition.x}px`, 
+              top: `${popupPosition.y + 5}px`,
+              maxHeight: '300px',
+              overflow: 'auto'
+            }}
+          >
+            <div className="flex items-start space-x-2">
+              <span className="text-sm font-semibold text-gray-700">{hoveredPostNumber}.</span>
+              <div className="flex-1">
+                <div className="flex items-center space-x-2 text-sm mb-2">
+                  <span 
+                    className="font-medium text-green-600"
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(posts[hoveredPostNumber - 1].name) }}
+                  />
+                  {posts[hoveredPostNumber - 1].mail && (
+                    <span className="text-gray-500">[{posts[hoveredPostNumber - 1].mail}]</span>
+                  )}
+                  <span className="text-gray-500">{posts[hoveredPostNumber - 1].date}</span>
+                  {posts[hoveredPostNumber - 1].id && (
+                    <span className="text-blue-600">ID:{posts[hoveredPostNumber - 1].id}</span>
+                  )}
+                </div>
+                <div 
+                  className="text-sm text-gray-800 break-words"
+                  dangerouslySetInnerHTML={{ __html: processAnchorLinks(DOMPurify.sanitize(posts[hoveredPostNumber - 1].message)) }}
+                />
+              </div>
             </div>
           </div>
         )}
