@@ -48,7 +48,13 @@ export default function Home() {
     if (!datUrl) return;
     
     try {
-      const response = await fetch(datUrl);
+      // Add timeout to prevent hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      
+      const response = await fetch(datUrl, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      
       if (!response.ok) {
         throw new Error('ダウンロードに失敗しました');
       }
@@ -64,7 +70,11 @@ export default function Home() {
       window.URL.revokeObjectURL(url);
       setError('');
     } catch (e) {
-      setError('ダウンロードに失敗しました。CORSエラーの可能性があります。');
+      if (e instanceof Error && e.name === 'AbortError') {
+        setError('ダウンロードがタイムアウトしました。');
+      } else {
+        setError('ダウンロードに失敗しました。ネットワークエラーまたはCORSの問題の可能性があります。');
+      }
     }
   };
 
@@ -74,7 +84,8 @@ export default function Home() {
     const parsedPosts: Post[] = [];
 
     lines.forEach((line, index) => {
-      // dat format: name<>mail<>date ID:id<>message<>title (title only on first line)
+      // dat format: name<>mail<>date ID:id<>message<>title
+      // Note: title field appears only on first line but we treat all lines uniformly
       const parts = line.split('<>');
       if (parts.length >= 4) {
         const name = parts[0];
