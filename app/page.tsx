@@ -16,15 +16,37 @@ export default function Home() {
   const [datUrl, setDatUrl] = useState('');
   const [posts, setPosts] = useState<Post[]>([]);
   const [error, setError] = useState('');
+  const [isDatOchi, setIsDatOchi] = useState(false);
 
   // Convert 5ch thread URL to dat URL
-  const convertToDatUrl = (url: string): string | null => {
+  const convertToDatUrl = (url: string, isDatOchi: boolean): string | null => {
     try {
       // Example URL: https://[server].5ch.net/test/read.cgi/[board]/[thread_id]/
-      const match = url.match(/https?:\/\/([^\/]+)\.5ch\.net\/test\/read\.cgi\/([^\/]+)\/(\d+)/);
+      const match = url.match(/https?:\/\/([^\/]+)\.([^\/]+)\/test\/read\.cgi\/([^\/]+)\/(\d+)/);
       if (match) {
-        const [, server, board, threadId] = match;
-        return `https://${server}.5ch.net/${board}/dat/${threadId}.dat`;
+        const [, server, domain, board, threadId] = match;
+        
+        // Validate threadId has sufficient length for substring operations
+        if (threadId.length < 5) {
+          return null;
+        }
+        
+        if (isDatOchi) {
+          // Archived thread logic based on Chaika addon
+          if (domain === '5ch.net' || domain === 'bbspink.com') {
+            // 2023/07/11: 5ch.net の新仕様
+            const first4 = threadId.substring(0, 4);
+            return `https://${server}.${domain}/${board}/oyster/${first4}/${threadId}.dat`;
+          } else {
+            // For other 2ch type boards
+            const first4 = threadId.substring(0, 4);
+            const first5 = threadId.substring(0, 5);
+            return `https://${server}.${domain}/${board}/kako/${first4}/${first5}/${threadId}.dat`;
+          }
+        } else {
+          // Standard thread URL
+          return `https://${server}.${domain}/${board}/dat/${threadId}.dat`;
+        }
       }
       return null;
     } catch (e) {
@@ -35,7 +57,7 @@ export default function Home() {
   // Handle URL conversion
   const handleConvert = () => {
     setError('');
-    const converted = convertToDatUrl(threadUrl);
+    const converted = convertToDatUrl(threadUrl, isDatOchi);
     if (converted) {
       setDatUrl(converted);
     } else {
@@ -185,6 +207,18 @@ export default function Home() {
                   placeholder="https://example.5ch.net/test/read.cgi/board/1234567890/"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="isDatOchi"
+                  checked={isDatOchi}
+                  onChange={(e) => setIsDatOchi(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <label htmlFor="isDatOchi" className="ml-2 text-sm font-medium text-gray-700">
+                  dat落ちしている（過去ログ）
+                </label>
               </div>
               <button
                 onClick={handleConvert}
