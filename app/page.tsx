@@ -24,7 +24,7 @@ export default function Home() {
   // Convert 5ch thread URL to dat URL
   const convertToDatUrl = (url: string, isDatOchi: boolean): string | null => {
     try {
-      // Example URL: https://[server].5ch.net/test/read.cgi/[board]/[thread_id]/
+      // Example URL: https://[server].5ch.io/test/read.cgi/[board]/[thread_id]/
       const match = url.match(/https?:\/\/([^\/]+)\.([^\/]+)\/test\/read\.cgi\/([^\/]+)\/(\d+)/);
       if (match) {
         const [, server, domain, board, threadId] = match;
@@ -36,8 +36,8 @@ export default function Home() {
         
         if (isDatOchi) {
           // Archived thread logic based on Chaika addon
-          if (domain === '5ch.net' || domain === 'bbspink.com') {
-            // 2023/07/11: 5ch.net の新仕様
+          if (domain === '5ch.io' || domain === 'bbspink.com') {
+            // 2023/07/11: 5ch.net の新仕様 / 2026: 5ch.io に変更
             const first4 = threadId.substring(0, 4);
             return `https://${server}.${domain}/${board}/oyster/${first4}/${threadId}.dat`;
           } else {
@@ -454,7 +454,7 @@ export default function Home() {
                   type="text"
                   value={threadUrl}
                   onChange={(e) => setThreadUrl(e.target.value)}
-                  placeholder="https://example.5ch.net/test/read.cgi/board/1234567890/"
+                  placeholder="https://example.5ch.io/test/read.cgi/board/1234567890/"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
@@ -507,7 +507,7 @@ export default function Home() {
                   type="text"
                   value={htmlUrl}
                   onChange={(e) => setHtmlUrl(e.target.value)}
-                  placeholder="https://kako.5ch.net/..."
+                  placeholder="https://kako.5ch.io/..."
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
