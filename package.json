@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "encoding-japanese": "^2.2.0",
-    "isomorphic-dompurify": "^3.16.0",
+    "isomorphic-dompurify": "^3.17.0",
     "next": "16.2.7",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
