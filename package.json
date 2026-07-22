@@ -11,7 +11,7 @@
   "dependencies": {
     "encoding-japanese": "^2.2.0",
     "isomorphic-dompurify": "^3.19.0",
-    "next": "16.2.10",
+    "next": "16.2.11",
     "react": "^19.2.8",
     "react-dom": "^19.2.7"
   },
